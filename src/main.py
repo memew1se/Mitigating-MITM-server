@@ -10,6 +10,10 @@ class Site(BaseModel):
     url: HttpUrl
 
 
+class Cert(BaseModel):
+    cert: str
+
+
 app = FastAPI()
 
 
@@ -19,7 +23,7 @@ async def get_root():
 
 
 @app.post("/")
-async def post_root(site: Site):
+async def post_root(site: Site) -> Cert:
     parsed_url = urlparse(str(site.url))
     hostname = parsed_url.hostname
     port = int(parsed_url.port or 443)
@@ -28,4 +32,4 @@ async def post_root(site: Site):
     sock = context.wrap_socket(conn, server_hostname=hostname)
     sock.connect((hostname, port))
 
-    return ssl.DER_cert_to_PEM_cert(sock.getpeercert(True))
+    return {"cert": ssl.DER_cert_to_PEM_cert(sock.getpeercert(True))}
