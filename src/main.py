@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+import hashlib
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, HttpUrl
 
 import ssl
@@ -11,7 +12,7 @@ class Site(BaseModel):
 
 
 class Cert(BaseModel):
-    cert: str
+    fingerprint: str
 
 
 app = FastAPI()
@@ -26,10 +27,15 @@ async def get_root():
 async def post_root(site: Site) -> Cert:
     parsed_url = urlparse(str(site.url))
     hostname = parsed_url.hostname
-    port = int(parsed_url.port or 443)
-    conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
-    sock = context.wrap_socket(conn, server_hostname=hostname)
-    sock.connect((hostname, port))
+    port = 443
+    try:
+        context = ssl.create_default_context()
+        with socket.create_connection((hostname, port), timeout=10) as sock:
+            with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                cert = ssock.getpeercert(binary_form=True)
+                raw_fingerprint = hashlib.sha256(cert).digest()
+                formatted = ":".join(f"{b:02X}" for b in raw_fingerprint)
+                return {"fingerprint": formatted}
 
-    return {"cert": ssl.DER_cert_to_PEM_cert(sock.getpeercert(True))}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
